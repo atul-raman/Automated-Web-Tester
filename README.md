@@ -28,8 +28,6 @@ Example
 python webtester.py -u http://example.com -b wordlist.txt
 This command will perform a security scan on http://example.com and then start a brute-force attack using the directories listed in wordlist.txt.
 
-Conclusion
-The Automated Web Tester is a versatile tool for web application security testing. It provides a simple yet effective way to identify potential vulnerabilities and improve the overall security posture of a website.
 
 This tool is intended for educational and ethical testing purposes only. Unauthorized use of this tool against systems without explicit permission is illegal and unethical. Always obtain proper authorization before using this tool to test the security of any system.
 
