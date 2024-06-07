@@ -19,15 +19,12 @@ Output Formatting: The script uses the prettytable library to display the list o
 Usage
 To use the Automated Web Tester, run the webtester.py script with the following command-line arguments:
 
-css
-Copy code
+
 python webtester.py -u <url> [-b] [-h]
 -u, --url: Specify the target URL.
 -b, --bruteforce: Enable brute-force mode.
 -h, --help: Display the help message.
 Example
-arduino
-Copy code
 python webtester.py -u http://example.com -b wordlist.txt
 This command will perform a security scan on http://example.com and then start a brute-force attack using the directories listed in wordlist.txt.
 
