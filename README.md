@@ -1,5 +1,5 @@
 Automated Web Tester
-#### Video Demo:  <URL HERE>
+#### Video Demo:  <https://streamable.com/dkwdzm>
 #### Description: This tool uses directory fuzzing to find directories in any web server and find header vulnerabilities.
 The Automated Web Tester is a Python script designed to perform a series of security checks on a given website. It utilizes the requests library to send HTTP requests and analyze the responses to check for common security headers and vulnerabilities. The script can also perform a directory brute-force attack to discover hidden directories on the web server.
 
