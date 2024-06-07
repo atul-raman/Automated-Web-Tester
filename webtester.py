@@ -1,17 +1,16 @@
 import requests
 import re
-import sys, getopt
+import sys
+import getopt
 from termcolor import colored
-import shutup; shutup.please()
+import shutup
+shutup.please()
 import os
-import matplotlib.pyplot as plt
-import numpy as np
-from prettytable import PrettyTable
-import multiprocessing 
-from threading import Thread, Event
 import math
+from threading import Thread
+from prettytable import PrettyTable
 
-class dir:
+class Directory:
     def __init__(self, url, httpcode, size):
         self.url = url
         self.httpcode = httpcode
@@ -23,90 +22,70 @@ def main(argv):
     url = ""
     bruteforceFile = ""
     try:
-        opts, args = getopt.getopt(argv, "u:b:h", ["url=", "bruteforce", "help"])
+        opts, args = getopt.getopt(argv, "u:b:h", ["url=", "bruteforce=", "help"])
     except getopt.GetoptError:
-        print(colored('usage: webtester.py -u <url>', 'light_yellow'))
+        print_usage()
         sys.exit(2)
+    
     for opt, arg in opts:
         if opt in ("-h", "--help"):
-            print(colored('Usage: script.py -u <url> [-b] [-h]\n-u, --url       Specify the URL\n-b, --bruteforce Enable brute force mode\n-h, --help', 'light_yellow'))
-            sys.exit(1)
+            print_usage()
+            sys.exit(0)
         elif opt in ("-u", "--url"):
             url = arg
-        if opt in ("-b", "--bruteforce"):
+        elif opt in ("-b", "--bruteforce"):
             bruteforceFile = arg
-    response = ""
 
+    if not url:
+        print(colored("URL is required. Use -u <url> to specify the URL.", 'red'))
+        print_usage()
+        sys.exit(2)
+    
     try:
         response = requests.get(url)
-    except requests.exceptions.MissingSchema:
-        print(colored("Please include http:// or https:// in the url", 'light_yellow'))
+    except requests.exceptions.RequestException as e:
+        print(colored(f"Error: {e}", 'red'))
         sys.exit(1)
-    except requests.exceptions.InvalidURL:
-        print(colored("Please provide a valid url", 'light_yellow'))
-        sys.exit(1)
-        
-    print("Header Vulnerability Scan:")
-    checkHSTSHeader(response)
-    checkCSPHeader(response)
-    checkXSSHeader(response)
-    checkContentSniffing(response)
-    checkPermittedCrossDomainHeader(response)
-    checkXFrameOptions(response)
-    checkExpectCT(response)
-    checkFeaturePolicy(response)
-    checkReferrerPolicy(response)
     
-    status = False
-    if bruteforceFile != "":
+    print("Root Directory Header Vulnerability Scan:")
+    perform_header_scan(response)
+    
+    if bruteforceFile:
         print(f"Starting Bruteforce Attack on {url} using {bruteforceFile} as dictionary.")
-        status = directoryBruteforce(url, bruteforceFile)
-        print(status)
-    while status == True:
-        sortedDirectories = sorted(foundDirectories, key=lambda x: x.size)
-        printDirectoryTable()
-        target = input("(Enter 0 to quit) Select a target: ")
-        if(target.isdigit()):
-            if(int(target) == 0):
-                print("Quitting")
-                status = False
-                break
-            else:
-                if(1 <= int(target) <= len(sortedDirectories)):
-                   
-                    target = sortedDirectories[int(target) -1].url
-                    
+        status = directory_bruteforce(url, bruteforceFile)
+        if status:
+            interactive_scan(url)
 
-                    response = requests.get(target)
-                    print(f"Executing Header Vulnerability Scan: {target}")
-                    checkHSTSHeader(response)
-                    checkCSPHeader(response)
-                    checkXSSHeader(response)
-                    checkContentSniffing(response)
-                    checkPermittedCrossDomainHeader(response)
-                    checkXFrameOptions(response)
-                    checkExpectCT(response)
-                    checkFeaturePolicy(response)
-                    checkReferrerPolicy(response)
-        
-                else:
-                    print(colored("Invalid Input",'red'))
-        else:
-                    print(colored("Invalid Input",'red'))            
-            
+def print_usage():
+    usage_text = '''Usage: script.py -u <url> [-b <bruteforce file>] [-h]
+    -u, --url        Specify the URL
+    -b, --bruteforce Enable brute force mode with specified dictionary file
+    -h, --help       Display this help message'''
+    print(colored(usage_text, 'light_yellow'))
+
+def perform_header_scan(response):
+    check_hsts_header(response)
+    check_csp_header(response)
+    check_xss_header(response)
+    check_content_sniffing(response)
+    check_permitted_cross_domain_header(response)
+    check_xframe_options(response)
+    check_expect_ct(response)
+    check_feature_policy(response)
+    check_referrer_policy(response)
+
 def extract_max_age(header_value):
     match = re.search(r'max-age=(\d+)', header_value)
     if match:
         return int(match.group(1))
-    else:
-        raise ValueError("max-age not found in the header")
+    raise ValueError("max-age not found in the header")
 
-def checkHSTSHeader(response):
+def check_hsts_header(response):
     headers = response.headers
     if 'strict-transport-security' in headers:
         try:
-            max_age = extract_max_age(headers.get('Strict-Transport-Security'))
-            if int(max_age) >= 31536000:
+            max_age = extract_max_age(headers.get('strict-transport-security'))
+            if max_age >= 31536000:
                 print(colored(f"HSTS Header is in place with valid max_age value of {max_age}", 'green'))
             else:
                 print(colored(f"HSTS Header is in place with invalid max_age value of {max_age}", 'yellow'))
@@ -115,187 +94,179 @@ def checkHSTSHeader(response):
     else:
         print(colored("HSTS Header is Not In Place", 'red'))
 
-def checkCSPHeader(response):
+def check_csp_header(response):
     headers = response.headers
     if 'content-security-policy' in headers:
-        try:
-            contentSecurityHeader = headers.get('content-security-policy')
-            if "unsafe-inline" in contentSecurityHeader:
-                print(colored(f"CSP Header is in place with the usage of unsafe-inline directive.", 'red'))
-            else:
-                print(colored(f"CSP Header is in place without the usage of unsafe-inline directive.", 'green'))
-        except ValueError as e:
-            print(colored(e, 'red'))
+        csp_header = headers.get('content-security-policy')
+        if "unsafe-inline" in csp_header:
+            print(colored(f"CSP Header is in place with the usage of unsafe-inline directive.", 'red'))
+        else:
+            print(colored(f"CSP Header is in place without the usage of unsafe-inline directive.", 'green'))
     else:
         print(colored("CSP Header is Not In Place", 'yellow'))
 
-def checkXSSHeader(response):
+def check_xss_header(response):
     headers = response.headers
     if 'x-xss-protection' in headers:
-        try:
-            contentSecurityHeader = headers.get('x-xss-protection')
-            if contentSecurityHeader[0] == '0':
-                print(colored(f"X-XSS-Protection Header is in place but XSS filter is disabled", 'yellow'))
-            elif contentSecurityHeader[0] == '1':
-                print(colored(f"X-XSS-Protection Header and XSS filter is enabled", 'green'), end="")
-                if 'block' in contentSecurityHeader:
-                    print(colored(" mode is set to block.", 'green'))
-                else:
-                    print(colored(" mode is not set to block.", 'red'))
-        except ValueError as e:
-            print(colored(e, 'red'))
+        xss_header = headers.get('x-xss-protection')
+        if xss_header.startswith('0'):
+            print(colored(f"X-XSS-Protection Header is in place but XSS filter is disabled", 'yellow'))
+        elif xss_header.startswith('1'):
+            print(colored(f"X-XSS-Protection Header and XSS filter is enabled", 'green'), end="")
+            if 'block' in xss_header:
+                print(colored(" mode is set to block.", 'green'))
+            else:
+                print(colored(" mode is not set to block.", 'red'))
     else:
         print(colored("X-XSS-Protection Header is Not In Place", 'red'))
 
-def checkContentSniffing(response):
+def check_content_sniffing(response):
     headers = response.headers
     if 'x-content-type-options' in headers:
-        try:
-            contentTypeHeader = headers.get('x-content-type-options')
-            if "nosniff" in contentTypeHeader:
-                print(colored(f"X-Content-Type-Options Header is in place set to nosniff", 'green'))
-            else:
-                print(colored(f"X-Content-Type-Options Header is in place not set to nosniff", 'yellow'))
-        except ValueError as e:
-            print(colored(e, 'red'))
+        content_type_header = headers.get('x-content-type-options')
+        if content_type_header.lower() == "nosniff":
+            print(colored(f"X-Content-Type-Options Header is in place set to nosniff", 'green'))
+        else:
+            print(colored(f"X-Content-Type-Options Header is in place but not set to nosniff", 'yellow'))
     else:
         print(colored("X-Content-Type-Options Header is Not In Place", 'red'))
 
-def checkPermittedCrossDomainHeader(response):
+def check_permitted_cross_domain_header(response):
     headers = response.headers
     if 'x-permitted-cross-domain-policies' in headers:
-        try:
-            contentSecurityHeader = headers.get('x-permitted-cross-domain-policies')
-            if contentSecurityHeader == "none":
-                print(colored(f"X-Permitted-Cross-Domain-Policies Header is set to none", 'green'))
-            else:
-                print(colored(f"X-Permitted-Cross-Domain-Policies Header is not set to none", 'red'))
-        except ValueError as e:
-            print(colored(e, 'red'))
+        cross_domain_header = headers.get('x-permitted-cross-domain-policies')
+        if cross_domain_header.lower() == "none":
+            print(colored(f"X-Permitted-Cross-Domain-Policies Header is set to none", 'green'))
+        else:
+            print(colored(f"X-Permitted-Cross-Domain-Policies Header is not set to none", 'red'))
     else:
         print(colored("X-Permitted-Cross-Domain-Policies Header is Not In Place", 'yellow'))
 
-def checkXFrameOptions(response):
+def check_xframe_options(response):
     headers = response.headers
     if 'x-frame-options' in headers:
-        try:
-            header = headers.get('x-frame-options')
-            if header == "deny":
-                print(colored(f"X-Frame-Options Header is set to deny", 'green'))
-            elif header == "sameorigin":
-                print(colored(f"X-Frame-Options Header is set to sameorigin", 'yellow'))
-        except ValueError as e:
-            print(colored(e, 'red'))
+        xframe_header = headers.get('x-frame-options')
+        if xframe_header.lower() == "deny":
+            print(colored(f"X-Frame-Options Header is set to deny", 'green'))
+        elif xframe_header.lower() == "sameorigin":
+            print(colored(f"X-Frame-Options Header is set to sameorigin", 'yellow'))
     else:
         print(colored("X-Frame-Options Header is Not In Place", 'red'))
 
-def checkExpectCT(response):
+def check_expect_ct(response):
     if 'expect-ct' in response.headers:
-        header = response.headers.get('expect-ct')
-        print(colored(f"Expect-CT Header is set to {header}", 'green'))
+        expect_ct_header = response.headers.get('expect-ct')
+        print(colored(f"Expect-CT Header is set to {expect_ct_header}", 'green'))
     else:
         print(colored("Expect-CT Header is Not In Place", 'yellow'))
 
-def checkFeaturePolicy(response):
+def check_feature_policy(response):
     if 'feature-policy' in response.headers:
-        header = response.headers.get('feature-policy')
-        print(colored(f"Feature-Policy Header is set to {header}", 'green'))
+        feature_policy_header = response.headers.get('feature-policy')
+        print(colored(f"Feature-Policy Header is set to {feature_policy_header}", 'green'))
     else:
         print(colored("Feature-Policy Header is Not In Place", 'yellow'))
 
-def checkReferrerPolicy(response):
+def check_referrer_policy(response):
     if 'referrer-policy' in response.headers:
-        header = response.headers.get('referrer-policy')
-        print(colored(f"Referrer-Policy Header is set to {header}", 'green'))
+        referrer_policy_header = response.headers.get('referrer-policy')
+        print(colored(f"Referrer-Policy Header is set to {referrer_policy_header}", 'green'))
     else:
         print(colored("Referrer-Policy Header is Not In Place", 'yellow'))
 
-def printDirectoryTable():
+def print_directory_table():
     table = PrettyTable()
     table.field_names = ["Index", "Directory", "HTTP Response Code", "Size (bytes)"]
 
-    # Sort foundDirectories by size before printing
-    sortedDirectories = sorted(foundDirectories, key=lambda x: x.size)
+    sorted_directories = sorted(foundDirectories, key=lambda x: x.size)
     
-    for i in range(len(sortedDirectories)):
-        directory = sortedDirectories[i].url
-        size = sortedDirectories[i].size
-        response_code = sortedDirectories[i].httpcode
-
-        color = 'green'
-        if size > 10000:
-            color = 'yellow'
-        if size > 50000:
-            color = 'red'
-        table.add_row([i+1, directory, response_code, colored(size, color)])
+    for i, directory in enumerate(sorted_directories, start=1):
+        color = 'green' if directory.size <= 10000 else 'yellow' if directory.size <= 50000 else 'red'
+        table.add_row([i, directory.url, directory.httpcode, colored(directory.size, color)])
     
     print(table)
 
-def directoryBruteforce(url, directoriesFile):
+def directory_bruteforce(url, directories_file):
     max_threads = 10
     try:
-        file = open(directoriesFile, "r")
-        wordlist = file.read().splitlines()
-        count = 0
-        totalLines = len(wordlist)
-        if totalLines == 0:
-            print("The wordlist is empty.")
+        with open(directories_file, "r") as file:
+            wordlist = file.read().splitlines()
+        
+        if not wordlist:
+            print(colored("The wordlist is empty.", 'red'))
             return False
         
-        num_threads = min(max_threads, totalLines)
-        
-        chunk_size = math.ceil(totalLines / num_threads)
+        num_threads = min(max_threads, len(wordlist))
+        chunk_size = math.ceil(len(wordlist) / num_threads)
         lists = [wordlist[i * chunk_size:(i + 1) * chunk_size] for i in range(num_threads)]
-        
         
         threads = []
         for i in range(num_threads):
-            thread = Thread(target=bruteforceFunction, args=(url, lists[i],i))
+            thread = Thread(target=bruteforce_function, args=(url, lists[i], i))
             threads.append(thread)
             thread.start()
-        
         
         for thread in threads:
             thread.join()
 
-        if len(foundDirectories) == 0:
-            print("\nNo directories were found.")
-            return False    
+        if not foundDirectories:
+            print(colored("No directories were found.", 'red'))
+            return False
         else:
-            print("\nPrinting found directories:")
-            for i in range(len(foundDirectories)):
-                print(foundDirectories[i].url)
+            print(colored("Printing found directories:", 'green'))
+            for directory in foundDirectories:
+                print(directory.url)
             return True
     except IOError as e:
-        print(e)
-        return False    
+        print(colored(e, 'red'))
+        return False
     except KeyboardInterrupt:
-        
-        if len(foundDirectories) == 0:
-            print("\nSearch interrupted. No directories were found.")
-            return False    
+        if not foundDirectories:
+            print(colored("Search interrupted. No directories were found.", 'red'))
         else:
-            print("\nSearch interrupted. Printing found directories:")
-            for found_dir in foundDirectories:
-                print(found_dir.url)
-            return False    
-def bruteforceFunction(url, directories,threadNumber):
-    session = requests.Session()
+            print(colored("Search interrupted. Printing found directories:", 'yellow'))
+            for directory in foundDirectories:
+                print(directory.url)
+        return False
 
-   
-    totalLines = len(directories)
-    count = 0
-    for directory in directories:
-        count = count + 1
-        percentDone = (count / totalLines) * 100
+def bruteforce_function(url, directories, thread_number):
+    session = requests.Session()
+    total_lines = len(directories)
+
+    for count, directory in enumerate(directories, start=1):
+        percent_done = (count / total_lines) * 100
         if count % 10 == 0:
-            print(colored(f"[*][Thread {threadNumber}] Progress: {round(percentDone, 2)}%", 'blue'))
-        directory_url = url + "/" + directory
+            print(colored(f"[*][Thread {thread_number}] Progress: {round(percent_done, 2)}%", 'blue'))
+        
+        directory_url = f"{url}/{directory}"
         response = session.get(directory_url)
+        
         if response.status_code in [200, 301, 403, 401, 500]:
             print(colored(f"[+] Found directory: {directory_url}", 'green'))
-            foundDirectories.append(dir(directory_url, response.status_code, len(response.content)))
+            foundDirectories.append(Directory(directory_url, response.status_code, len(response.content)))
         else:
-            print(colored(f"[-] {directory_url}", 'red'))    
+            print(colored(f"[-] {directory_url}", 'red'))
+
+def interactive_scan(url):
+    while True:
+        sorted_directories = sorted(foundDirectories, key=lambda x: x.size)
+        print_directory_table()
+        target = input("(Enter 0 to quit) Select a target: ")
+        
+        if target.isdigit():
+            target = int(target)
+            if target == 0:
+                print("Quitting")
+                break
+            elif 1 <= target <= len(sorted_directories):
+                target_url = sorted_directories[target - 1].url
+                response = requests.get(target_url)
+                print(f"Executing Header Vulnerability Scan: {target_url}")
+                perform_header_scan(response)
+            else:
+                print(colored("Invalid Input", 'red'))
+        else:
+            print(colored("Invalid Input", 'red'))
+
 if __name__ == "__main__":
     main(sys.argv[1:])
